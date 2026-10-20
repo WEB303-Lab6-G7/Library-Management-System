@@ -61,6 +61,10 @@ line icons, and layouts for both desktop and mobile.
 
 ## Architecture
 
+![Architecture diagram](docs/architecture.png)
+
+The same architecture as a flowchart, also showing the two REST calls to Catalog:
+
 ```mermaid
 flowchart LR
     UI[Website] --> GW["API Gateway :8090<br/>sessions + access control"]
@@ -189,6 +193,7 @@ pkg/svc/          HTTP helpers
 services/<name>/  one main.go per microservice
 gateway/          API gateway: routing, sessions (session.go), website (web/)
 deploy/           Postgres init script (one database per service)
+docs/             architecture diagram (architecture.png)
 scripts/          integration-test.sh (Part G)
 ```
 
