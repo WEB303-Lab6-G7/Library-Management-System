@@ -1,0 +1,11 @@
+test-results.md
+*.log
+/bin/
+# compiled service binaries (from "go build ./services/x")
+/catalog
+/member
+/circulation
+/reservation
+/fine
+/notification
+/gateway/gateway

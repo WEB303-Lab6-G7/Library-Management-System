@@ -1,0 +1,118 @@
+name: library
+
+x-service: &service
+  restart: unless-stopped
+  depends_on:
+    postgres: { condition: service_healthy }
+    rabbitmq: { condition: service_healthy }
+
+x-env: &env
+  RABBITMQ_URL: amqp://guest:guest@rabbitmq:5672/
+  CATALOG_URL: http://catalog:8081
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: library
+      POSTGRES_PASSWORD: library
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./deploy/init-dbs.sql:/docker-entrypoint-initdb.d/init-dbs.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U library"]
+      interval: 3s
+      retries: 20
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    hostname: rabbitmq   # fixed hostname so durable queues survive container re-creation
+    volumes:
+      - rabbitdata:/var/lib/rabbitmq
+    ports:
+      - "5672:5672"     # AMQP
+      - "15672:15672"   # management dashboard (guest / guest)
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      retries: 20
+
+  catalog:
+    <<: *service
+    build: { context: ., args: { SERVICE: services/catalog } }
+    environment:
+      <<: *env
+      PORT: "8081"
+      DATABASE_URL: postgres://library:library@postgres:5432/catalog_db?sslmode=disable
+      SEED_BOOKS: "true"             # add 10 starter books when the catalogue is empty
+    ports: ["8081:8081"]
+
+  member:
+    <<: *service
+    build: { context: ., args: { SERVICE: services/member } }
+    environment:
+      <<: *env
+      PORT: "8082"
+      DATABASE_URL: postgres://library:library@postgres:5432/member_db?sslmode=disable
+      FINE_SUSPEND_THRESHOLD: "50"   # suspend when unpaid fines exceed Nu.50
+      LIBRARIAN_EMAIL: librarian@library.bt      # staff account created on first start
+      LIBRARIAN_PASSWORD: librarian123
+    ports: ["8082:8082"]
+
+  circulation:
+    <<: *service
+    build: { context: ., args: { SERVICE: services/circulation } }
+    environment:
+      <<: *env
+      PORT: "8083"
+      DATABASE_URL: postgres://library:library@postgres:5432/circulation_db?sslmode=disable
+      LOAN_DAYS: "14"
+      OVERDUE_CHECK_SECONDS: "20"
+    ports: ["8083:8083"]
+
+  reservation:
+    <<: *service
+    build: { context: ., args: { SERVICE: services/reservation } }
+    environment:
+      <<: *env
+      PORT: "8084"
+      DATABASE_URL: postgres://library:library@postgres:5432/reservation_db?sslmode=disable
+    ports: ["8084:8084"]
+
+  fine:
+    <<: *service
+    build: { context: ., args: { SERVICE: services/fine } }
+    environment:
+      <<: *env
+      PORT: "8085"
+      DATABASE_URL: postgres://library:library@postgres:5432/fine_db?sslmode=disable
+      FINE_PER_DAY: "10"             # Nu.10 per day late
+    ports: ["8085:8085"]
+
+  notification:
+    <<: *service
+    build: { context: ., args: { SERVICE: services/notification } }
+    environment:
+      <<: *env
+      PORT: "8086"
+      DATABASE_URL: postgres://library:library@postgres:5432/notification_db?sslmode=disable
+    ports: ["8086:8086"]
+
+  gateway:
+    <<: *service
+    build: { context: ., args: { SERVICE: gateway } }
+    environment:
+      <<: *env
+      PORT: "8080"
+      SESSION_SECRET: change-me-to-a-long-random-string   # signs login cookies
+      MEMBER_URL: http://member:8082
+      CIRCULATION_URL: http://circulation:8083
+      RESERVATION_URL: http://reservation:8084
+      FINE_URL: http://fine:8085
+      NOTIFICATION_URL: http://notification:8086
+      RABBITMQ_API: http://rabbitmq:15672
+    ports: ["8090:8080"]
+
+volumes:
+  pgdata:
+  rabbitdata:
